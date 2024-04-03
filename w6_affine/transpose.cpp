@@ -2,7 +2,7 @@
 #include <vector>
 #include <cmath>
 #include <fstream>
-
+#define PI 3.1415926
 using namespace std;
 
 void read_img(const char *fileName, vector<vector<unsigned char>> &imgArr)
@@ -109,57 +109,54 @@ vector<unsigned char> createHeader(int width, int height)
     return header;
 }
 
-template<typename T>
-unsigned char Truncate(T pix){
+template <typename T>
+unsigned char Truncate(T pix)
+{
     unsigned char ans = 0;
-    ans = ((pix<0)?0:(pix>255)?255:pix);
+    ans = ((pix < 0) ? 0 : (pix > 255) ? 255
+                                       : pix);
     return ans;
 }
 
-void DownSampling(vector<vector<unsigned char>> &imgArr, vector<vector<unsigned char>> &downScale, int img_h, int img_w){
-    for (int i=0;i<img_h;i++){
-        for (int j=0;j<img_w;j++){
-            if (i%2 == 0 && j%2 == 0){
-                downScale[j/2][i/2] = imgArr[j][i];
+bool Check(int fi, int fj, int ci, int cj, int img_h, int img_w)
+{
+    bool ck_fi = (fi < 0) ? false : (fi < img_h) ? true
+                                                 : false;
+    bool ck_fj = (fj < 0) ? false : (fj < img_w) ? true
+                                                 : false;
+    bool ck_ci = (ci < 0) ? false : (ci < img_h) ? true
+                                                 : false;
+    bool ck_cj = (cj < 0) ? false : (cj < img_w) ? true
+                                                 : false;
+    return (ck_fi & ck_fj & ck_ci & ck_cj);
+}
+
+void Transpose(vector<vector<unsigned char>> &imgArr, vector<vector<unsigned char>> &newImg, int img_h, int img_w)
+{
+    for (int i = 0; i < img_h; i++)
+    {
+        for (int j = 0; j < img_w; j++)
+        {
+            double value = imgArr[j][i];
+            double newI = cos(10.f * PI / 180.0f) * i - sin(10.0f * PI / 180.f) * j;
+            double newJ = cos(10.f * PI / 180.0f) * i + cos(10.0f * PI / 180.f) * j;
+
+            int fi = newI, fj = newJ, ci = fi + 1, cj = fj + 1;
+            if (Check(fi, fj, ci, cj, img_h, img_w))
+            {
+                double lu = (ci - newI) * (cj - newJ) * value;
+                double ru = (ci - newI) * (newJ - fj) * value;
+                double ld = (newI - fi) * (cj - newJ) * value;
+                double rd = (newI - fi) * (newJ - fj) * value;
+
+                newImg[fj][fi] = Truncate(lu + newImg[fj][fi]);
+                newImg[cj][fi] = Truncate(ru + newImg[cj][fi]);
+                newImg[fj][ci] = Truncate(ld + newImg[fj][ci]);
+                newImg[cj][ci] = Truncate(rd + newImg[cj][ci]);
             }
         }
     }
 }
-void UpSampling(vector<vector<unsigned char>> &downScale, vector<vector<unsigned char>> &upScale, int img_h, int img_w){
-    for (int i=0;i<img_h-1;i++){
-        for (int j=0;j<img_w-1;j++){
-            int x = j/2, y=i/2;
-            // case 1 四點填充
-            if(i%2==0 && j%2==0){
-                upScale[j][i] = downScale[x][y];
-            }
-
-            // case 2 垂直相加
-            else if(i%2==1 && j%2==0){
-                float u = downScale[x][y];
-                float d = downScale[x][y+1];
-                upScale[j][i] = Truncate(u*0.5 + d*0.5 + 0.5);
-            }
-
-            // case 3 水平相加
-            else if(i%2==0 && j%2==1){
-                float l = downScale[x][y];
-                float r = downScale[x+1][y];
-                upScale[j][i] = Truncate(l*0.5 + r*0.5 + 0.5);
-            }
-
-            // case 4 四點中點
-            else{
-                float lu = downScale[x][y];
-                float ru = downScale[x+1][y];
-                float ld = downScale[x][y+1];
-                float rd = downScale[x+1][y+1];
-                upScale[j][i] = Truncate(lu*0.5 + ru*0.5 + ld*0.5 + rd*0.5 +0.5);
-            }
-        }
-    }
-}
-
 int main()
 {
     // origin image
@@ -169,21 +166,16 @@ int main()
     int img_w = imgArr[0].size();
 
     // down scale image
-    vector<vector<unsigned char>> downScale;
-    downScale.resize(img_h/2, vector<unsigned char>(img_w/2));
-
-    // up scale image
-    vector<vector<unsigned char>> upScale;
-    upScale.resize(img_h, vector<unsigned char>(img_w));
+    vector<vector<unsigned char>> newImg;
+    newImg.resize(img_h, vector<unsigned char>(img_w));
 
     // process
-    DownSampling(imgArr,downScale,img_h,img_w);
-    UpSampling(downScale,upScale,img_h,img_w);
-    
-    int sample_h = upScale.size();
-    int sample_w = upScale[0].size();
+    Transpose(imgArr, newImg, img_h, img_w);
 
-    FILE *fp_w = fopen("res\\down_simpling.bmp", "wb");
+    int sample_h = newImg.size();
+    int sample_w = newImg[0].size();
+
+    FILE *fp_w = fopen("res\\traspose.bmp", "wb");
 
     if (fp_w == NULL)
         return 0;
@@ -198,7 +190,7 @@ int main()
     {
         for (int j = 0; j < sample_w; j++)
         {
-            putc(upScale[j][i], fp_w);
+            putc(newImg[j][i], fp_w);
         }
     }
 
