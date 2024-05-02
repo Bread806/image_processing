@@ -2,7 +2,11 @@
 #include <vector>
 #include <cmath>
 #include <fstream>
+#include <algorithm>
 #define PI 3.1415926
+int min_amp = 0;
+int max_amp = 65536;
+
 using namespace std;
 
 void read_img(const char *fileName, vector<vector<unsigned char>> &imgArr)
@@ -118,6 +122,22 @@ unsigned char Truncate(T pix)
     return ans;
 }
 
+float Max(float a, float b)
+{
+    if (a >= b)
+        return a;
+    else
+        return b;
+}
+
+float Min(float a, float b)
+{
+    if (a <= b)
+        return a;
+    else
+        return b;
+}
+
 void WriteFIle(vector<vector<float>> &arr, string fileName)
 {
     int row = 32, col = 32;
@@ -151,7 +171,7 @@ void InitInputData(vector<vector<unsigned char>> &imgArr, vector<vector<int>> &i
     }
 }
 
-void DFT(vector<vector<int>> &inputData, int N, vector<vector<float>> &realOut, vector<vector<float>> &imagOut)
+void DFT(vector<vector<int>> &inputData, int N, vector<vector<float>> &realOut, vector<vector<float>> &imagOut, vector<vector<float>> &amplitudeOut)
 {
     // u,v 0 ~ N
     for (int u = 0; u < N; u++)
@@ -170,15 +190,45 @@ void DFT(vector<vector<int>> &inputData, int N, vector<vector<float>> &realOut, 
             }
             realOut[u][v] /= (N * N);
             imagOut[u][v] /= (N * N);
+            amplitudeOut[u][v] = sqrt(realOut[u][v] * realOut[u][v] + imagOut[u][v] * imagOut[u][v]);
+
+            // min max cal
+            max_amp = Max(float(max_amp), amplitudeOut[u][v]);
+            min_amp = Min(float(min_amp), amplitudeOut[u][v]);
         }
     }
 }
 
+void Normallize(vector<vector<float>> &amplitudeOut)
+{
+    int Length = amplitudeOut.size();
+    for (int i = 0; i < Length; i++)
+    {
+        for (int j = 0; j < Length; j++)
+        {
+            amplitudeOut[i][j] = (amplitudeOut[i][j] - min_amp) / (max_amp - min_amp);
+        }
+    }
+}
+
+void GammaEnhencement(vector<vector<float>> &amplitudeOut)
+{
+    int Length = amplitudeOut.size();
+    for (int i = 0; i < Length; i++)
+    {
+        for (int j = 0; j < Length; j++)
+        {
+            float tmp = pow(amplitudeOut[j][i] / 255.0f, 0.3f) * 255 + 0.5;
+            amplitudeOut[j][i] = (tmp < 0) ? 0 : (tmp > 255) ? 255 : tmp;
+            amplitudeOut[j][i] *= 255;
+        }
+    }
+}
 int main()
 {
     // origin image
     vector<vector<unsigned char>> imgArr;
-    read_img("res\\32.bmp", imgArr);
+    read_img("res\\logo_bi.bmp", imgArr);
 
     int img_h = imgArr.size();
     int img_w = imgArr[0].size();
@@ -192,6 +242,7 @@ int main()
 
     vector<vector<float>> realOut(img_h, vector<float>(img_w, 0.0));
     vector<vector<float>> imagOut(img_h, vector<float>(img_w, 0.0));
+    vector<vector<float>> amplitudeOut(img_h, vector<float>(img_w, 0.0));
 
     // prepare DFT real part and DFT imag part
     realOut.resize(img_h, vector<float>(img_w));
@@ -199,31 +250,33 @@ int main()
 
     int N = img_h;
 
-    DFT(inputData, N, realOut, imagOut);
+    DFT(inputData, N, realOut, imagOut, amplitudeOut);
+    Normallize(amplitudeOut);
+    GammaEnhencement(amplitudeOut);
 
     cout << "====DFT====" << endl;
     WriteFIle(realOut, "realOut.txt");
     WriteFIle(imagOut, "imagOut.txt");
 
-    // FILE *fp_w = fopen("res\\Morphology.bmp", "wb");
+    FILE *fp_w = fopen("res\\DFT_gen.bmp", "wb");
 
-    // if (fp_w == NULL)
-    //     return 0;
+    if (fp_w == NULL)
+        return 0;
 
-    // vector<unsigned char> my_Header = createHeader(sample_w, sample_h);
-    // for (int i = 0; i < 1078; i++)
-    // {
-    //     putc(my_Header[i], fp_w);
-    // }
+    vector<unsigned char> my_Header = createHeader(img_w, img_h);
+    for (int i = 0; i < 1078; i++)
+    {
+        putc(my_Header[i], fp_w);
+    }
 
-    // for (int i = sample_h - 1; i >= 0; i--)
-    // {
-    //     for (int j = 0; j < sample_w; j++)
-    //     {
-    //         putc(copyArr[j][i], fp_w);
-    //     }
-    // }
+    for (int i = img_h - 1; i >= 0; i--)
+    {
+        for (int j = 0; j < img_w; j++)
+        {
+            putc(amplitudeOut[j][i], fp_w);
+        }
+    }
 
-    // fclose(fp_w);
+    fclose(fp_w);
     return 0;
 }
