@@ -1,0 +1,23 @@
+img = read_img("ninja.bmp")
+
+sobel_kernel_Gx={
+    {-1, 0, 1},
+    {-2, 0, 2},
+    {-1, 0, 1}
+}
+sobel_kernel_Gy={
+    {-1, -2, -1},
+    { 0,  0,  0},
+    { 1,  2,  1}
+}
+
+gradX = convolution(img , Gx);
+gradY = convolution(img , Gy);
+
+for i to height{
+    for j to width{
+        edge[i][j] = sqrt(gradX[i][j] * gradX[i][j] + gradY[i][j] * gradY[i][j]);
+        Truncate(edge[i][j])
+    }end for
+}end for
+    

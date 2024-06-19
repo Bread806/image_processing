@@ -1,0 +1,20 @@
+input  : a gray scale bmp picture (ninja.bmp)
+output : a bmp picture after Canny
+
+img = Readimg("ninja.bmp")
+Gauss(img) // 高斯模糊
+ 
+gradX, gradY = Sobel(img)
+gradient[img_w][img_h], angles[img_w][img_h]
+for i to height{
+    for j to width{
+        gradient[i][j] = sqrt(gradX[i][j] * gradX[i][j] + gradY[i][j] * gradY[i][j]);    
+        angles[i][j] = atan2(gradY[i][j], gradX[i][j]) * 180 / M_PI;
+        angles[i][j] + 180 if < 0
+    }end for
+}end for
+
+edge = NonMaximumSuppression(gradient, angles) // 把角度標準化到4種數值
+Filter(lower_bound, upper_bound , edge) //小於下邊界改成0，大於上邊界改成255
+Connectlins (edge) // 周圍有邊變白點
+Saveimg(edge)

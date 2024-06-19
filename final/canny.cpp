@@ -2,71 +2,36 @@
 #include <vector>
 #include <fstream>
 #include <cmath>
-#define PI 3.1415926
+#include <algorithm>
+#include <queue>
 
 using namespace std;
-void read_img(const char *fileName, vector<vector<unsigned char>> &imgArr, int &width, int &heigh)
+
+void read_img(const char *fileName, vector<vector<unsigned char>> &imgArr, int &width, int &height)
 {
     FILE *fp = fopen(fileName, "rb");
+    if (!fp)
+        return;
 
     unsigned char c;
-    if (fp == NULL)
-        return;
-    for (int i = 0; i < 10; i++)
-    {
-        c = getc(fp);
-    }
-    int s = 0;
-    s += getc(fp);
-    s += getc(fp) * 256;
-    s += getc(fp) * 256 * 256;
-    s += getc(fp) * 256 * 256 * 256;
-    cout << s << " ";
+    for (int i = 0; i < 18; i++)
+        getc(fp);
 
+    width = 0;
     for (int i = 0; i < 4; i++)
-    {
-        c = getc(fp);
-    }
+        width += getc(fp) << (8 * i);
 
-    int w = 0;
-    w += getc(fp);
-    w += getc(fp) * 256;
-    w += getc(fp) * 256 * 256;
-    w += getc(fp) * 256 * 256 * 256;
-    cout << w << " ";
+    height = 0;
+    for (int i = 0; i < 4; i++)
+        height += getc(fp) << (8 * i);
 
-    int h = 0;
-    h += getc(fp);
-    h += getc(fp) * 256;
-    h += getc(fp) * 256 * 256;
-    h += getc(fp) * 256 * 256 * 256;
-    cout << h << " ";
+    for (int i = 0; i < 28; i++)
+        getc(fp);
 
-    for (int i = 0; i < 8; i++)
-    {
-        c = getc(fp);
-    }
-
-    int l = 0;
-    l += getc(fp);
-    l += getc(fp) * 256;
-    l += getc(fp) * 256 * 256;
-    l += getc(fp) * 256 * 256 * 256;
-    cout << l << " " << endl;
-
-    for (int i = 0; i < s - 38; i++)
-    {
-        c = getc(fp);
-    }
-
-    imgArr.resize(h, vector<unsigned char>(w));
-
-    for (int i = 0; i < w * h; i++)
-    {
-        int x = i % w;
-        int y = i / w;
-        imgArr[x][h - y - 1] = getc(fp);
-    }
+    imgArr.resize(height, vector<unsigned char>(width));
+    for (int i = 0; i < height; i++)
+        for (int j = 0; j < width; j++)
+            imgArr[i][j] = getc(fp);
 
     fclose(fp);
 }
@@ -109,191 +74,220 @@ vector<unsigned char> createHeader(int width, int height)
     return header;
 }
 
-template <typename T>
-unsigned char Truncate(T pix)
-{
-    unsigned char ans = 0;
-    ans = ((pix < 0) ? 0 : (pix > 255) ? 255
-                                       : pix);
-    return ans;
-}
-
 void save_image(const string &path, const vector<vector<unsigned char>> &image, int width, int height)
 {
     ofstream file(path, ios::binary);
     if (!file)
-    {
-        cout << "error file save";
         return;
-    }
+
     vector<unsigned char> header = createHeader(width, height);
     file.write(reinterpret_cast<char *>(header.data()), header.size());
 
-    for (int i = height - 1; i >= 0; i--)
-    {
+    for (int i = 0; i < height; i++)
         for (int j = 0; j < width; j++)
-        {
             file.put(image[i][j]);
-        }
-    }
 
     file.close();
 }
 
-void Filter(vector<vector<double>>& thinArr)
+vector<vector<int>> applyKernel(const vector<vector<unsigned char>> &image, const vector<vector<int>> &kernel)
 {
-    int upper_bound = 100;
-    int lower_bound = 30;
-    for (int i = 0; i < thinArr.size(); i++)
-    {
-        for (int j = 0; j < thinArr[0].size(); j++)
+    int height = image.size();
+    int width = image[0].size();
+    int K_size = kernel.size();
+    int K_half = K_size / 2;
+
+    vector<vector<int>> result(height, vector<int>(width, 0));
+    for (int i = K_half; i < height - K_half; i++)
+        for (int j = K_half; j < width - K_half; j++)
         {
-            if (int(thinArr[j][i]) >= upper_bound){
-                thinArr[j][i] = 255;
-            }
-            else if (int(thinArr[j][i]) <= lower_bound){
-                thinArr[j][i] = 0;
-            }
-            else {
-                thinArr[j][i] = 100;
-            }
+            int sum = 0;
+            for (int x = -K_half; x <= K_half; x++)
+                for (int y = -K_half; y <= K_half; y++)
+                    sum += image[i + x][j + y] * kernel[x + K_half][y + K_half];
+            result[i][j] = sum;
         }
-    }
+    return result;
 }
-vector<vector<unsigned char>> convertToUnsignedChar(const vector<vector<double>> &thinArr)
+
+vector<vector<unsigned char>> gaussianBlur(const vector<vector<unsigned char>> &image)
 {
-    int height = thinArr.size();
-    int width = thinArr[0].size();
-    vector<vector<unsigned char>> image(height, vector<unsigned char>(width));
+    vector<vector<int>> kernel = {
+        {1, 4, 7, 4, 1},
+        {4, 16, 26, 16, 4},
+        {7, 26, 41, 26, 7},
+        {4, 16, 26, 16, 4},
+        {1, 4, 7, 4, 1}};
+    int kernelSum = 273;
+
+    int height = image.size();
+    int width = image[0].size();
+    int K_size = kernel.size();
+    int K_half = K_size / 2;
+
+    vector<vector<unsigned char>> result(height, vector<unsigned char>(width, 0));
+    for (int i = K_half; i < height - K_half; i++)
+        for (int j = K_half; j < width - K_half; j++)
+        {
+            int sum = 0;
+            for (int x = -K_half; x <= K_half; x++)
+                for (int y = -K_half; y <= K_half; y++)
+                    sum += image[i + x][j + y] * kernel[x + K_half][y + K_half];
+            result[i][j] = sum / kernelSum;
+        }
+    return result;
+}
+
+vector<vector<double>> nonMaxSuppression(const vector<vector<int>> &gradient, const vector<vector<double>> &angles)
+{
+    int height = gradient.size();
+    int width = gradient[0].size();
+    vector<vector<double>> result(height, vector<double>(width, 0));
+
+    for (int i = 1; i < height - 1; i++)
+        for (int j = 1; j < width - 1; j++)
+        {
+            double angle = angles[i][j];
+            int q = 255, r = 255;
+
+            if ((angle >= 0 && angle < 22.5) || (angle >= 157.5 && angle <= 180))
+            {
+                q = gradient[i][j + 1];
+                r = gradient[i][j - 1];
+            }
+            else if (angle >= 22.5 && angle < 67.5)
+            {
+                q = gradient[i + 1][j - 1];
+                r = gradient[i - 1][j + 1];
+            }
+            else if (angle >= 67.5 && angle < 112.5)
+            {
+                q = gradient[i + 1][j];
+                r = gradient[i - 1][j];
+            }
+            else if (angle >= 112.5 && angle < 157.5)
+            {
+                q = gradient[i - 1][j - 1];
+                r = gradient[i + 1][j + 1];
+            }
+
+            if (gradient[i][j] >= q && gradient[i][j] >= r)
+                result[i][j] = gradient[i][j];
+        }
+    return result;
+}
+
+void doubleThresholdAndEdgeTracking(vector<vector<unsigned char>> &edges, double lowThresh, double highThresh)
+{
+    int height = edges.size();
+    int width = edges[0].size();
+    vector<vector<bool>> strongEdge(height, vector<bool>(width, false));
 
     for (int i = 0; i < height; i++)
-    {
         for (int j = 0; j < width; j++)
         {
-            image[i][j] = static_cast<unsigned char>(thinArr[i][j]);
+            if (edges[i][j] >= highThresh)
+            {
+                edges[i][j] = 255;
+                strongEdge[i][j] = true;
+            }
+            else if (edges[i][j] < lowThresh)
+                edges[i][j] = 0;
+            else
+                edges[i][j] = 128;
         }
+
+    queue<pair<int, int>> q;
+    for (int i = 1; i < height - 1; i++)
+        for (int j = 1; j < width - 1; j++)
+            if (strongEdge[i][j])
+                q.push({i, j});
+
+    while (!q.empty())
+    {
+        int x = q.front().first;
+        int y = q.front().second;
+        q.pop();
+
+        for (int i = -1; i <= 1; i++)
+            for (int j = -1; j <= 1; j++)
+                if (edges[x + i][y + j] == 128)
+                {
+                    edges[x + i][y + j] = 255;
+                    q.push({x + i, y + j});
+                }
     }
 
-    return image;
+    for (int i = 0; i < height; i++)
+        for (int j = 0; j < width; j++)
+            if (edges[i][j] != 255)
+                edges[i][j] = 0;
 }
 
+vector<vector<unsigned char>> Canny(const vector<vector<unsigned char>> &grayImg, double lowThresh, double highThresh)
+{
+    int height = grayImg.size();
+    int width = grayImg[0].size();
+
+    vector<vector<unsigned char>> blurredImg = gaussianBlur(grayImg);
+
+    vector<vector<int>> Gx = {
+        {-1, 0, 1},
+        {-2, 0, 2},
+        {-1, 0, 1}};
+
+    vector<vector<int>> Gy = {
+        {-1, -2, -1},
+        {0, 0, 0},
+        {1, 2, 1}};
+
+    vector<vector<int>> gradX = applyKernel(blurredImg, Gx);
+    vector<vector<int>> gradY = applyKernel(blurredImg, Gy);
+
+    vector<vector<int>> gradient(height, vector<int>(width, 0));
+    vector<vector<double>> angles(height, vector<double>(width, 0));
+    for (int i = 0; i < height; i++)
+        for (int j = 0; j < width; j++)
+        {
+            gradient[i][j] = sqrt(gradX[i][j] * gradX[i][j] + gradY[i][j] * gradY[i][j]);
+            angles[i][j] = atan2(gradY[i][j], gradX[i][j]) * 180 / M_PI;
+            if (angles[i][j] < 0)
+                angles[i][j] += 180;
+        }
+
+    vector<vector<double>> nonMaxImg = nonMaxSuppression(gradient, angles);
+
+    vector<vector<unsigned char>> edges(height, vector<unsigned char>(width, 0));
+    for (int i = 0; i < height; i++)
+        for (int j = 0; j < width; j++)
+            edges[i][j] = static_cast<unsigned char>(nonMaxImg[i][j]);
+
+    doubleThresholdAndEdgeTracking(edges, lowThresh, highThresh);
+
+    return edges;
+}
 
 int main()
 {
-    // read img
-    string inputPath = "AIgened_gray.bmp";
-    int img_w, img_h;
-    vector<vector<unsigned char>> imgArr;
-    read_img(inputPath.c_str(), imgArr, img_w, img_h);
+    string inputPath = "ninja.bmp";
+    string outputCanny = "res\\ninja_canny_30-100_.bmp";
+
+    int width, height;
+    vector<vector<unsigned char>> grayImg;
+    read_img(inputPath.c_str(), grayImg, width, height);
     cout << "image readed." << endl;
 
-    vector<vector<unsigned char>> paddingArr;
-    paddingArr.resize(img_w + 4, vector<unsigned char>(img_h + 4));
+    // vector<vector<unsigned char>> sobelEdgeImg = Sobel(grayImg);
+    // cout << "Sobel done." << endl;
 
-    vector<vector<unsigned char>> outArr;
-    outArr.resize(img_w + 4, vector<unsigned char>(img_h + 4));
+    // save_image(outputSobel, sobelEdgeImg, width, height);
+    // cout << "Sobel edge detection completed. Result saved as " << outputSobel << endl;
 
-    for (int i = 0; i < img_h; i++)
-    {
-        for (int j = 0; j < img_w; j++)
-        {
-            paddingArr[j + 2][i + 2] = imgArr[j][i];
-        }
-    }
+    vector<vector<unsigned char>> cannyEdgeImg = Canny(grayImg, 30, 100);
+    cout << "Canny done." << endl;
 
-    // put img on a padding map
-    vector<vector<unsigned char>> tmpArr;
-    tmpArr.resize(img_w, vector<unsigned char>(img_h));
-    for (int i = 2; i < img_h + 2; i++)
-    {
-        for (int j = 2; j < img_w + 2; j++)
-        {
-            double tmp = 2 * paddingArr[j - 2][i - 2] + 4 * paddingArr[j - 1][i - 2] + 5 * paddingArr[j][i - 2] + 4 * paddingArr[j + 1][i - 2] + 2 * paddingArr[j + 2][i - 2] + 4 * paddingArr[j - 2][i - 1] + 9 * paddingArr[j - 1][i - 1] + 12 * paddingArr[j][i - 1] + 9 * paddingArr[j + 1][i - 1] + 4 * paddingArr[j + 2][i - 1] + 5 * paddingArr[j - 2][i] + 12 * paddingArr[j - 1][i] + 15 * paddingArr[j][i] + 12 * paddingArr[j + 1][i] + 5 * paddingArr[j + 2][i] + 4 * paddingArr[j - 2][i + 1] + 9 * paddingArr[j - 1][i + 1] + 12 * paddingArr[j][i + 1] + 9 * paddingArr[j + 1][i + 1] + 4 * paddingArr[j + 2][i + 1] + 2 * paddingArr[j - 2][i + 2] + 4 * paddingArr[j - 1][i + 2] + 5 * paddingArr[j][i + 2] + 4 * paddingArr[j + 1][i + 2] + 2 * paddingArr[j + 2][i + 2];
-            tmpArr[j - 2][i - 2] = Truncate(tmp / 159 + 0.5);
-        }
-    }
-
-    vector<vector<unsigned char>> degreeArr;
-    degreeArr.resize(img_w, vector<unsigned char>(img_h));
-    vector<vector<unsigned char>> energyArr;
-    energyArr.resize(img_w, vector<unsigned char>(img_h));
-    for (int i = 1; i < img_h - 1; i++)
-    {
-        for (int j = 1; j < img_w - 1; j++)
-        {
-            double sobel_h = -1 * tmpArr[j - 1][i - 1] - 2 * tmpArr[j - 1][i] - tmpArr[j - 1][i + 1] + tmpArr[j + 1][i - 1] + 2 * tmpArr[j + 1][i] + tmpArr[j + 1][i + 1];
-            double sobel_v = -1 * tmpArr[j - 1][i - 1] - 2 * tmpArr[j][i - 1] - tmpArr[j + 1][i - 1] + tmpArr[j - 1][i + 1] + 2 * tmpArr[j][i + 1] + tmpArr[j + 1][i + 1];
-            double eng_edge = sqrt(sobel_v * sobel_v + sobel_h * sobel_h);
-            energyArr[j][i] = eng_edge;
-
-            if (sobel_v != 0 || sobel_h != 0)
-            {
-                double degree = atan2(sobel_v, sobel_h) * 180.0 / PI;
-                if (degree < 0)
-                {
-                    degree += 180;
-                }
-                else if (degree >= 180)
-                {
-                    degree -= 180;
-                }
-                degreeArr[j][i] = (int)(degree / 45 + 0.5) * 45;
-            }
-            else
-            {
-                degreeArr[j][i] = 255;
-            }
-
-            if (energyArr[j][i] > 128)
-            {
-                outArr[j][i] = degreeArr[j][i];
-            }
-        }
-    }
-
-    vector<vector<double>> thinArr;
-    thinArr.resize(img_w, vector<double>(img_h));
-    for (int i = 1; i < img_h - 1; i++)
-    {
-        for (int j = 1; j < img_w - 1; j++)
-        {
-            thinArr[j][i] = 0;
-            if (degreeArr[j][i] == 0 || degreeArr[j][i] == 180)
-            {
-                if (energyArr[j][i] >= energyArr[j - 1][i] && energyArr[j][i] >= energyArr[j + 1][i])
-                {
-                    thinArr[j][i] = energyArr[j][i];
-                }
-            }
-            else if (degreeArr[j][i] == 45)
-            {
-                if (energyArr[j][i] >= energyArr[j - 1][i - 1] && energyArr[j][i] >= energyArr[j + 1][i + 1])
-                {
-                    thinArr[j][i] = energyArr[j][i];
-                }
-            }
-            else if (degreeArr[j][i] == 90)
-            {
-                if (energyArr[j][i] >= energyArr[j][i - 1] && energyArr[j][i] >= energyArr[j][i + 1])
-                {
-                    thinArr[j][i] = energyArr[j][i];
-                }
-            }
-            else if (degreeArr[j][i] == 135)
-            {
-                if (energyArr[j][i] >= energyArr[j - 1][i + 1] && energyArr[j][i] >= energyArr[j + 1][i - 1])
-                {
-                    thinArr[j][i] = energyArr[j][i];
-                }
-            }
-        }
-    }
-    Filter(thinArr);
-    vector<vector<unsigned char>> image = convertToUnsignedChar(thinArr);
-    int w = image[0].size();
-    int h = image.size();
-    save_image("thinArr.bmp", image, w, h);
-
+    save_image(outputCanny, cannyEdgeImg, width, height);
+    cout << "Canny edge detection completed. Result saved as " << outputCanny << endl;
 
     return 0;
 }
